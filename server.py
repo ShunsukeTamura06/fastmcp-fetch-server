@@ -6,9 +6,13 @@ import readabilipy.simple_json
 from protego import Protego
 import httpx
 import asyncio
+import nest_asyncio
 
 # FastMCPサーバーを作成
 mcp = FastMCP("Fetch MCP Server")
+
+# nest_asyncioを適用してネストしたイベントループを許可
+nest_asyncio.apply()
 
 # デフォルトのUser-Agent
 DEFAULT_USER_AGENT_AUTONOMOUS = "ModelContextProtocol/1.0 (Autonomous; +https://github.com/modelcontextprotocol/servers)"
@@ -96,6 +100,52 @@ async def fetch_url_content(
         f"Content type {content_type} cannot be simplified to markdown, but here is the raw content:\n",
     )
 
+async def _fetch_async(
+    url: str,
+    max_length: int = 5000,
+    start_index: int = 0,
+    raw: bool = False,
+    ignore_robots_txt: bool = False,
+    proxy_url: Optional[str] = None
+) -> str:
+    """非同期版のfetch関数"""
+    if not url:
+        raise ValueError("URL is required")
+
+    user_agent = DEFAULT_USER_AGENT_AUTONOMOUS
+    
+    # robots.txtチェック（無視しない場合）
+    if not ignore_robots_txt:
+        try:
+            await check_may_autonomously_fetch_url(url, user_agent, proxy_url)
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    try:
+        content, prefix = await fetch_url_content(
+            url, user_agent, force_raw=raw, proxy_url=proxy_url
+        )
+    except Exception as e:
+        return f"Error fetching URL: {str(e)}"
+    
+    original_length = len(content)
+    if start_index >= original_length:
+        content = "<e>No more content available.</e>"
+    else:
+        truncated_content = content[start_index : start_index + max_length]
+        if not truncated_content:
+            content = "<e>No more content available.</e>"
+        else:
+            content = truncated_content
+            actual_content_length = len(truncated_content)
+            remaining_content = original_length - (start_index + actual_content_length)
+            # コンテンツが切り詰められた場合の続きを取得する案内
+            if actual_content_length == max_length and remaining_content > 0:
+                next_start = start_index + actual_content_length
+                content += f"\n\n<e>Content truncated. Call the fetch tool with a start_index of {next_start} to get more content.</e>"
+    
+    return f"{prefix}Contents of {url}:\n{content}"
+
 @mcp.tool()
 def fetch(
     url: str,
@@ -116,52 +166,21 @@ def fetch(
         ignore_robots_txt: robots.txtの制限を無視 (デフォルト: False)
         proxy_url: プロキシURL (オプション)
     """
-    async def _fetch():
-        if not url:
-            raise ValueError("URL is required")
-
-        user_agent = DEFAULT_USER_AGENT_AUTONOMOUS
-        
-        # robots.txtチェック（無視しない場合）
-        if not ignore_robots_txt:
-            try:
-                await check_may_autonomously_fetch_url(url, user_agent, proxy_url)
-            except Exception as e:
-                return f"Error: {str(e)}"
-
-        try:
-            content, prefix = await fetch_url_content(
-                url, user_agent, force_raw=raw, proxy_url=proxy_url
-            )
-        except Exception as e:
-            return f"Error fetching URL: {str(e)}"
-        
-        original_length = len(content)
-        if start_index >= original_length:
-            content = "<e>No more content available.</e>"
-        else:
-            truncated_content = content[start_index : start_index + max_length]
-            if not truncated_content:
-                content = "<e>No more content available.</e>"
-            else:
-                content = truncated_content
-                actual_content_length = len(truncated_content)
-                remaining_content = original_length - (start_index + actual_content_length)
-                # コンテンツが切り詰められた場合の続きを取得する案内
-                if actual_content_length == max_length and remaining_content > 0:
-                    next_start = start_index + actual_content_length
-                    content += f"\n\n<e>Content truncated. Call the fetch tool with a start_index of {next_start} to get more content.</e>"
-        
-        return f"{prefix}Contents of {url}:\n{content}"
-
-    # 非同期関数を同期実行
     try:
-        loop = asyncio.get_event_loop()
+        # 現在のイベントループを取得
+        loop = asyncio.get_running_loop()
+        # 新しいタスクとして実行
+        task = loop.create_task(_fetch_async(url, max_length, start_index, raw, ignore_robots_txt, proxy_url))
+        return loop.run_until_complete(task)
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    return loop.run_until_complete(_fetch())
+        # イベントループが実行されていない場合（通常のスクリプト実行時）
+        return asyncio.run(_fetch_async(url, max_length, start_index, raw, ignore_robots_txt, proxy_url))
+    except Exception as e:
+        # nest_asyncioを使用してネストしたイベントループで実行
+        try:
+            return asyncio.run(_fetch_async(url, max_length, start_index, raw, ignore_robots_txt, proxy_url))
+        except Exception as nested_e:
+            return f"Error executing fetch: {str(e)} | Nested error: {str(nested_e)}"
 
 @mcp.tool()
 def fetch_simple(url: str) -> str:

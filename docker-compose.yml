@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  fastmcp-fetch-server:
+    build: .
+    container_name: fastmcp-fetch-server
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEFAULT_MAX_LENGTH=5000
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - fastmcp-network
+
+  # 開発用: デバッグモードでの実行
+  fastmcp-fetch-server-dev:
+    build: .
+    container_name: fastmcp-fetch-server-dev
+    ports:
+      - "8001:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=true
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    command: python server.py
+    restart: "no"
+    profiles:
+      - dev
+    networks:
+      - fastmcp-network
+
+networks:
+  fastmcp-network:
+    driver: bridge
+
+volumes:
+  logs:

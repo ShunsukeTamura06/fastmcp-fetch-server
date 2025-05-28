@@ -126,13 +126,23 @@ DEFAULT_USER_AGENT="CustomBot/1.0"
    - ファイアウォール設定を確認
    - ポート8000が使用可能か確認
 
-2. **robots.txtエラー**
+2. **"this event is already running"エラー**
+   - この問題は修正済みです（v1.1以降）
+   - 古いバージョンを使用している場合は最新版に更新してください
+   - `pip install -r requirements.txt --upgrade`
+
+3. **robots.txtエラー**
    - `ignore_robots_txt=True` を試す
    - または `fetch_ignore_robots` ツールを使用
 
-3. **コンテンツが取得できない**
+4. **コンテンツが取得できない**
    - URLが正しいか確認
    - プロキシ設定が必要な場合は `proxy_url` を設定
+
+5. **Difyからツールが呼び出せない**
+   - サーバーが正常に起動しているか確認
+   - Difyの接続設定でSSE形式を選択
+   - MCPサーバーの再起動を試す
 
 ## 開発
 
@@ -149,6 +159,18 @@ python server.py
 # 別ターミナルでテスト
 curl http://localhost:8000/health
 ```
+
+## 更新履歴
+
+### v1.1 (2025-05-28)
+- **修正**: Difyチャットbotでの"this event is already running"エラーを解決
+- **追加**: `nest_asyncio`による非同期処理の改善
+- **改善**: エラーハンドリングの強化
+
+### v1.0 (2025-05-28)
+- 初回リリース
+- FastMCP サーバー実装
+- Dify連携対応
 
 ## ライセンス
 
